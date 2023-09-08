@@ -1,6 +1,6 @@
-from flask import Flask, request, jsonify
-from data import get_inventory
-from data_processing import (
+from flask import Flask, request, jsonify, render_template, abort
+from persistance import get_inventory, save_inventory, load_inventory
+from model import (
     prod_is_available_enough,
     customer_purchased_product,
     customer_purchase_list,
@@ -8,6 +8,11 @@ from data_processing import (
 )
 
 app = Flask(__name__)
+
+@app.route("/")
+
+def home():
+    return render_template("welcome.html", page_class="welcome")
 
 @app.errorhandler(404)
 def not_found(error):
@@ -17,17 +22,19 @@ def not_found(error):
 def bad_request(error):
     return jsonify({"error": "Bad request"}), 400
 
-
 @app.route("/inventory", methods=["GET"])
 def get_inventory_route():
-    return jsonify(get_inventory())
+    inventory_data = get_inventory()
+    return render_template("inventory.html", inventory_data=inventory_data)
+   # return jsonify(get_inventory())
 
 @app.route("/availability/<prod_name>/<int:quantity>", methods=["GET"])
 def check_availability_route(prod_name, quantity):
     if not prod_name or quantity <= 0:
         abort(400)
     inventory = get_inventory()
-    return jsonify(prod_is_available_enough(prod_name, quantity, inventory))
+    availability = prod_is_available_enough(prod_name, quantity, inventory)
+    return render_template("availability.html", prod_name=prod_name, quantity=quantity, availability=availability)
 
 @app.route("/purchase", methods=["POST"])
 def purchase_item_route():
@@ -41,6 +48,7 @@ def purchase_item_route():
     inventory = get_inventory()
     try:
         updated_inventory = customer_purchased_product(prod_name, quantity, inventory)
+        save_inventory(updated_inventory)
         return jsonify(updated_inventory)
     except ValueError as e:
         return str(e), 400
@@ -57,14 +65,18 @@ def multi_purchase_items_route():
     inventory = get_inventory()
     try:
         updated_inventory = customer_purchase_list(order_list, inventory)
+        save_inventory(updated_inventory)
         return jsonify(updated_inventory)
     except ValueError as e:
         return str(e), 400
 
 @app.route("/report", methods=["GET"])
 def get_report_route():
-    inventory = get_inventory()
-    return stock_report(inventory)
+    inv = get_inventory()
+    report = stock_report(inv)
+    return render_template("report.html", inventory=inv, report=report)
+
 
 if __name__ == "__main__":
+    inventory = load_inventory()
     app.run(debug=True)
